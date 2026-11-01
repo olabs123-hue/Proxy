@@ -1,0 +1,39 @@
+=== environment ===
+cpus: 1   kernel: 6.18.44-fc-v185   g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+load generator (wrk), proxy and fake origins all share this machine
+duration: 8s per scenario, 64 connections, 1 wrk thread
+=== 1. baseline: wrk -> one origin directly (no proxy) ===
+  Req/Sec   124.25k    16.45k  156.23k    67.50%
+  50%  264.00us
+  99%  780.00us
+  989012 requests in 8.00s, 96.21MB read
+  Requests/sec: 123575.28
+=== 2. proxy, cache ON (every request after the first is a cache hit) ===
+  50%  365.00us
+  99%    1.19ms
+  1155334 requests in 8.00s, 136.62MB read
+  Requests/sec: 144399.64
+  cache hits=1155270 misses=1; requests that reached the origin during this run: 1
+=== 3. proxy, cache OFF (every request is proxied to an origin, round-robin over 3) ===
+  50%    4.45ms
+  99%    7.56ms
+  111279 requests in 8.01s, 12.63MB read
+  Requests/sec:  13884.48
+=== 4. failover: cache OFF, origin b2 is killed 3s into the run ===
+  50%    4.59ms
+  99%    7.90ms
+  134514 requests in 10.02s, 15.27MB read
+  Requests/sec:  13422.59
+  upstream errors:  20
+  upstream retries: 20
+  5xx to clients:   0
+  # HELP proxy_backend_up Whether a backend is considered healthy (1) or not (0).
+  # TYPE proxy_backend_up gauge
+  proxy_backend_up{backend="127.0.0.1:19001"} 1
+  proxy_backend_up{backend="127.0.0.1:19002"} 0
+  proxy_backend_up{backend="127.0.0.1:19003"} 1
+=== 5. coalescing: 1000 simultaneous requests for one uncached URL (origin delay 300ms) ===
+  1000 clients finished in 0.42s
+  status=200 x-cache=COALESCED: 999
+  status=200 x-cache=MISS: 1
+  origin received: hits=1  (for 1000 client requests)
