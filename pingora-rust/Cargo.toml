@@ -1,0 +1,10 @@
+[package]
+name = "edgeguard-pingora"
+version = "0.2.0"
+edition = "2021"
+description = "Health-aware Rust HTTP proxy using Cloudflare Pingora"
+license = "MIT"
+
+[dependencies]
+async-trait = "0.1"
+pingora = { version = "0.9", features = ["openssl", "lb"] }
