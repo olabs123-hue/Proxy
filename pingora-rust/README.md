@@ -58,3 +58,12 @@ This is a portfolio experiment, not a hardened CDN. It does **not** yet provide 
 
 - [Pingora repository](https://github.com/cloudflare/pingora)
 - [Official Pingora quick start](https://github.com/cloudflare/pingora/blob/main/docs/quick_start.md)
+
+## Retry and observability experiment (v0.3)
+
+- **Connection retries:** For `GET` and `HEAD` only, upstream connection failures may be retried once; the request context tracks up to two backend selections and skips the failed address on a retry. `POST` and other methods are not explicitly retried.
+- **Metrics:** Loopback-only `http://127.0.0.1:9188/metrics` exposes Prometheus-style request counts, terminal proxy errors, eligible connection retries and approximate request latency buckets (5/25/100/500 ms).
+- **Failover exercise:** `python3 scripts/ci_failover.py` starts two synthetic origins, verifies distribution, stops one, checks convergence and restores it. Requires the proxy already running.
+- **Scope:** Passive failure detection, full request retries, HTTP-status-based retries, auth, TLS, public access and production hardening are not included. An origin can fail during the health-check convergence window.
+- **Benchmarks:** `scripts/benchmark.py` measures *serial* request latency only. Do not compare its output to concurrent C++ proxy throughput figures. Same-hardware concurrent load testing remains future work.
+
