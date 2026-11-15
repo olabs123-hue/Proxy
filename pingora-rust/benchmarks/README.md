@@ -33,3 +33,9 @@ Interpret `wrk` p50/p75/p90/p99 as request-latency observations **from wrk**, no
 ## Next experiment
 
 Measure failover under sustained load while terminating one origin; record seconds to stable healthy-only traffic, errors during transition and backend recovery. This will be a separate failure-injection report, not folded into clean throughput numbers.
+
+## Repeated-run summary
+
+The CI workflow now runs **three trials per proxy**, with a 6-second measured phase per trial, 32 connections and two wrk threads. The order alternates between implementations. The helper `python3 scripts/summarize_comparison.py benchmarks/results/ci/results.json` writes `summary.json` and `summary.md` with the median and [minimum, maximum] observed within the run; it also reports response and socket errors. No automatic winner is declared.
+
+These are shared-runner smoke measurements, not statistically independent controlled experiments. Three short trials and the thread-per-connection Python origin limit how much we can infer; validation on a dedicated Linux host is required before using comparative performance claims in job applications.
