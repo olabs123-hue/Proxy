@@ -50,3 +50,14 @@ jobs:
           name: edgeguard-comparison-raw
           path: pingora-rust/benchmarks/results/ci/
           if-no-files-found: warn
+
+      - name: Controlled origin-failure exercise (separate from throughput)
+        run: |
+          python3 scripts/failure_injection.py --duration 11 --concurrency 4 --output benchmarks/results/failure-injection
+      - name: Upload failure-injection observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edgeguard-failure-injection
+          path: pingora-rust/benchmarks/results/failure-injection/
+          if-no-files-found: warn
