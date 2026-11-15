@@ -170,6 +170,9 @@ def main():
                     proc = subprocess.Popen([str(rust)],cwd=ROOT,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                     try:
                         wait_http(9188,"/metrics")
+                        # The metrics listener is started before Pingora begins accepting
+                        # HTTP traffic; independently check the actual proxy endpoint.
+                        wait_http(RUST_PORT,"/bench-warmup",timeout=30)
                         time.sleep(2)
                         run_wrk(RUST_PORT,2,args.connections,args.threads,args.path)
                         time.sleep(.25)
