@@ -41,7 +41,8 @@ jobs:
         working-directory: .
       - name: Benchmark harness smoke run (not performance ranking)
         run: |
-          python3 scripts/compare_proxies.py --duration 6 --connections 32 --threads 2 --repeat 3 --output benchmarks/results/ci\n          python3 scripts/summarize_comparison.py benchmarks/results/ci/results.json
+          python3 scripts/compare_proxies.py --duration 6 --connections 32 --threads 2 --repeat 3 --output benchmarks/results/ci
+          python3 scripts/summarize_comparison.py benchmarks/results/ci/results.json
       - name: Upload raw comparison artifacts
         if: always()
         uses: actions/upload-artifact@v4
