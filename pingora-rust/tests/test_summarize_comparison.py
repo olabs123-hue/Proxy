@@ -43,4 +43,4 @@ class TestComparisonSummary(unittest.TestCase):
         md = render_markdown(doc, summarize(doc))
         self.assertIn("shared runner", md)
         self.assertIn("p99", md)
-        self.assertNotIn("is faster", md)
+        self.assertIn("Do not infer", md)
