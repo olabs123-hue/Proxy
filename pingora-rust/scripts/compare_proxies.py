@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "pingora-rust" / "benchmarks" / "results"
 ORIGIN_PORTS = (19001, 19002)
 CPP_PORT = 18080
-RUST_PORT = 6188
+RUST_PORT = 16188
+RUST_METRICS_PORT = 19188
 
 def command(*parts):
     return subprocess.run(parts, cwd=ROOT, check=True, text=True)
@@ -162,22 +163,34 @@ def main():
                     ],CPP_PORT,19100,args.duration,args.connections,args.threads,args.path)
                 else:
                     env = os.environ.copy()
-                    env["EDGEGUARD_LISTEN"]="127.0.0.1:6188"
-                    env["EDGEGUARD_METRICS_LISTEN"]="127.0.0.1:9188"
+                    env["EDGEGUARD_LISTEN"]=f"127.0.0.1:{RUST_PORT}"
+                    env["EDGEGUARD_METRICS_LISTEN"]=f"127.0.0.1:{RUST_METRICS_PORT}"
                     env["EDGEGUARD_BACKENDS"]="127.0.0.1:19001,127.0.0.1:19002"
                     # Rust environment configuration passed through process environment.
                     print(f"Testing Rust at port {RUST_PORT}...",flush=True)
-                    proc = subprocess.Popen([str(rust)],cwd=ROOT,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                    # Use unique benchmark ports; the preceding CI integration test uses
+                    # 6188/9188, and orphaned processes must not mask startup failures.
+                    log_path = directory / f"{index+1}_rust_startup.log"
+                    with log_path.open("w") as startup_log:
+                        proc = subprocess.Popen([str(rust)],cwd=ROOT,env=env,
+                                                stdout=startup_log,stderr=subprocess.STDOUT)
                     try:
-                        wait_http(9188,"/metrics")
-                        # The metrics listener is started before Pingora begins accepting
-                        # HTTP traffic; independently check the actual proxy endpoint.
-                        wait_http(RUST_PORT,"/bench-warmup",timeout=30)
+                        try:
+                            wait_http(RUST_METRICS_PORT,"/metrics",timeout=20)
+                            # Metrics starts first, so check the traffic listener separately.
+                            wait_http(RUST_PORT,"/bench-warmup",timeout=30)
+                        except Exception as exc:
+                            status = proc.poll()
+                            logs = log_path.read_text(errors="replace")[-6000:]
+                            raise RuntimeError(
+                                f"Rust startup failed (exit code {status}): {exc}\n"
+                                f"Captured startup log:\n{logs}"
+                            ) from exc
                         time.sleep(2)
                         run_wrk(RUST_PORT,2,args.connections,args.threads,args.path)
                         time.sleep(.25)
                         m,raw=run_wrk(RUST_PORT,args.duration,args.connections,args.threads,args.path)
-                        with urlopen("http://127.0.0.1:9188/metrics",timeout=3) as f:
+                        with urlopen(f"http://127.0.0.1:{RUST_METRICS_PORT}/metrics",timeout=3) as f:
                             pm=f.read().decode()
                         result={"metrics":m,"wrk_output":raw,"proxy_metrics":pm}
                     finally:
