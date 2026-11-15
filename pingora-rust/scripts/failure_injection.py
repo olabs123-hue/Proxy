@@ -15,6 +15,10 @@ import threading
 import time
 from datetime import datetime, timezone
 from urllib.request import urlopen
+try:
+    from scripts.resource_monitor import ProcessSampler
+except ModuleNotFoundError:
+    from resource_monitor import ProcessSampler
 
 ROOT = Path(__file__).resolve().parents[2]
 ORIGINS = (19501, 19502)
@@ -77,7 +81,10 @@ def test_one(name, duration, concurrency, output):
     abort = threading.Event()
     records = []
     lock = threading.Lock()
+    output.mkdir(parents=True,exist_ok=True)
     logs = output / f"{name}_startup.log"
+    monitor = None
+    resource_summary = None
     try:
         for backend_port, label in zip(ORIGINS, ("a", "b")):
             p = subprocess.Popen(
@@ -110,6 +117,8 @@ def test_one(name, duration, concurrency, output):
             wait_endpoint(f"http://127.0.0.1:{port}/test-ready")
         except Exception as exc:
             raise RuntimeError(f"{name} failed to start: {exc}; log={logs.read_text()[-3000:]}") from exc
+        monitor = ProcessSampler(proxy.pid)
+        monitor.start()
         time.sleep(3)  # allow initial health checks to observe both origins
 
         start = time.monotonic()
@@ -155,18 +164,24 @@ def test_one(name, duration, concurrency, output):
             abort.set()
             for task in tasks:
                 task.result(timeout=6)
+        resource_summary = monitor.stop()
+        monitor = None
         records.sort(key=lambda x:x["offset_s"])
         with urlopen(f"http://127.0.0.1:{metrics_port}/metrics",timeout=3) as response:
             metrics=response.read().decode()
         (output / f"{name}_events.json").write_text(json.dumps(records,indent=2)+"\n")
         (output / f"{name}_metrics.txt").write_text(metrics)
+        (output / f"{name}_resources.json").write_text(json.dumps(resource_summary, indent=2)+"\n")
         summary=summarize_events(records,crash_at,restored_at)
         return {"proxy":name,"failure_injected_s":round(crash_at,4),
                 "origin_restart_s":round(restored_at,4),
                 "duration_s":duration,"observation":summary,
+                "process_resources":resource_summary,
                 "warning":"Low-concurrency shared-runner synthetic origins; first observed restoration is not exact health-check recovery."}
     finally:
         abort.set()
+        if monitor is not None:
+            monitor.stop()
         stop_process(proxy)
         for p in origins:
             stop_process(p)
@@ -175,21 +190,26 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--duration",type=float,default=11)
     parser.add_argument("--concurrency",type=int,default=4)
+    parser.add_argument("--repeat",type=int,default=1)
     parser.add_argument("--output",default="benchmarks/results/failure-injection")
     args=parser.parse_args()
-    if not (10 <= args.duration <= 45 and 1 <= args.concurrency <= 16):
-        parser.error("duration must be 10-45 and concurrency 1-16")
+    if not (10 <= args.duration <= 45 and 1 <= args.concurrency <= 16 and 1 <= args.repeat <= 10):
+        parser.error("duration 10-45, concurrency 1-16 and repeat 1-10 required")
     output=Path(args.output)
     output.mkdir(parents=True,exist_ok=True)
     results={"timestamp_utc":datetime.now(timezone.utc).isoformat(),
              "environment":"CI/local shared-host synthetic benchmark",
-             "concurrency":args.concurrency,"results":[]}
+             "concurrency":args.concurrency,"repeat":args.repeat,"results":[]}
     try:
-        for name in ("cpp","rust"):
-            print("Testing origin failure:",name,flush=True)
-            row=test_one(name,args.duration,args.concurrency,output)
-            results["results"].append(row)
-            print(json.dumps(row,indent=2),flush=True)
+        for iteration in range(args.repeat):
+            order=("cpp","rust") if iteration%2==0 else ("rust","cpp")
+            trial_dir=output / f"trial_{iteration+1}"
+            for name in order:
+                print(f"Testing origin failure: trial {iteration+1}, {name}",flush=True)
+                row=test_one(name,args.duration,args.concurrency,trial_dir)
+                row["trial"]=iteration+1
+                results["results"].append(row)
+                print(json.dumps(row,indent=2),flush=True)
     finally:
         (output/"failure_report.json").write_text(json.dumps(results,indent=2)+"\n")
     print("Saved",output/"failure_report.json")

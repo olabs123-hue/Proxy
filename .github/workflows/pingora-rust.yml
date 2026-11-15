@@ -53,7 +53,8 @@ jobs:
 
       - name: Controlled origin-failure exercise (separate from throughput)
         run: |
-          python3 scripts/failure_injection.py --duration 11 --concurrency 4 --output benchmarks/results/failure-injection
+          python3 scripts/failure_injection.py --duration 11 --concurrency 4 --repeat 3 --output benchmarks/results/failure-injection
+          python3 scripts/summarize_failure_trials.py benchmarks/results/failure-injection/failure_report.json
       - name: Upload failure-injection observations
         if: always()
         uses: actions/upload-artifact@v4
