@@ -70,7 +70,8 @@ def parse_wrk(output):
         "requests": int(total) if total is not None else None,
         "requests_per_second": number(r"Requests/sec:\s*([0-9.]+)"),
         "p50_ms": latency(r"^\s*50%\s+([0-9.]+)(us|ms|s)\s*$"),
-        "p95_ms": latency(r"^\s*95%\s+([0-9.]+)(us|ms|s)\s*$"),
+        "p75_ms": latency(r"^\s*75%\s+([0-9.]+)(us|ms|s)\s*$"),
+        "p90_ms": latency(r"^\s*90%\s+([0-9.]+)(us|ms|s)\s*$"),
         "p99_ms": latency(r"^\s*99%\s+([0-9.]+)(us|ms|s)\s*$"),
         "socket_errors": sum(map(int, sock.groups())) if sock else 0,
         "non_2xx_3xx": int(non2xx) if non2xx is not None else 0,
@@ -81,10 +82,10 @@ def run_wrk(port, seconds, concurrency, threads, path):
             "-d", f"{seconds}s", "--latency", f"http://127.0.0.1:{port}{path}"]
     result = subprocess.run(args, text=True, capture_output=True, cwd=ROOT, timeout=seconds+35)
     if result.returncode:
-        raise RuntimeError(f"wrk exited {result.returncode}: {result.stderr}")
+        raise RuntimeError(f"wrk exited {result.returncode}: {result.stderr}\n{result.stdout}")
     metrics = parse_wrk(result.stdout)
-    if any(metrics[k] is None for k in ("requests", "requests_per_second", "p50_ms", "p95_ms", "p99_ms")):
-        raise ValueError("Could not parse wrk output; inspect raw log and wrk version")
+    if any(metrics[k] is None for k in ("requests", "requests_per_second", "p50_ms", "p99_ms")):
+        raise ValueError(f"Could not parse wrk output. Raw output:\n{result.stdout}\nSTDERR:\n{result.stderr}")
     return metrics, result.stdout
 
 def run_one(name, executable, args, port, admin_port, seconds, connections, threads, path):

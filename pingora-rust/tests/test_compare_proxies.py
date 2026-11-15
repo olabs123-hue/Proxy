@@ -8,7 +8,6 @@ Running 5s test @ http://127.0.0.1:6188/test
      50%    1.52ms
      75%    2.00ms
      90%    3.00ms
-     95%    4.61ms
      99%    9.25ms
   18000 requests in 5.00s, 3.33MB read
 Requests/sec:   3600.00
@@ -20,7 +19,8 @@ class TestParseWrk(unittest.TestCase):
         self.assertEqual(v["requests"],18000)
         self.assertEqual(v["requests_per_second"],3600.0)
         self.assertEqual(v["p50_ms"],1.52)
-        self.assertEqual(v["p95_ms"],4.61)
+        self.assertEqual(v["p75_ms"],2.0)
+        self.assertEqual(v["p90_ms"],3.0)
         self.assertEqual(v["p99_ms"],9.25)
         self.assertEqual(v["socket_errors"],0)
     def test_error_counts_and_units(self):
