@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev cmake g++ libgtest-dev wrk
       - run: cargo check
       - run: cargo test
       - run: python3 -m unittest discover -s tests -v
@@ -33,3 +33,19 @@ jobs:
             sleep 1
           done
           python3 scripts/ci_failover.py
+
+      - name: Compile C++ proxy for comparison
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target edge-proxy -j 2
+        working-directory: .
+      - name: Benchmark harness smoke run (not performance ranking)
+        run: |
+          python3 scripts/compare_proxies.py --duration 3 --connections 16 --threads 2 --repeat 1 --output benchmarks/results/ci
+      - name: Upload raw comparison artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edgeguard-comparison-raw
+          path: pingora-rust/benchmarks/results/ci/
+          if-no-files-found: warn
