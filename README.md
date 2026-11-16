@@ -18,6 +18,16 @@ about 2,500 lines of source (plus about 1,300 lines of tests), no dependencies b
                             :9100/metrics  (Prometheus)
 ```
 
+## Rust/Pingora companion — EdgeGuard
+
+This repository also contains an independently developed [Rust/Pingora proxy experiment](pingora-rust/) designed to explore health-aware routing, bounded connection retries and observability alongside the original C++ implementation.
+
+- [Project architecture](pingora-rust/docs/ARCHITECTURE.md) · [Engineering case study](pingora-rust/docs/CASE_STUDY.md)
+- [Verified benchmark and failure-injection report](pingora-rust/benchmarks/PHASE4_AND_PHASE5.md) · [CPU/RSS and repeated reliability observations](pingora-rust/benchmarks/PHASE6.md)
+- [Upstream Pingora contribution plan](pingora-rust/docs/UPSTREAM_CONTRIBUTION_PLAN.md)
+
+**These are separate implementations, not a production CDN.** Under the three-trial shared-runner comparison, median throughput was 5,103.91 requests/s for C++ and 5,076.47 for Rust; the difference is not conclusive. The source and methodology are linked above.
+
 ## Features
 
 | Area | What it does |

@@ -1,69 +1,85 @@
-# EdgeGuard: Rust/Pingora proxy comparison
+# EdgeGuard — Rust + Cloudflare Pingora
 
-A separate Rust experiment alongside [my C++17 Linux edge reverse proxy](https://github.com/olabs123-hue/Proxy). This implementation is independent, **not affiliated with Cloudflare**, and based on publicly documented Pingora APIs.
+Independent Rust networking prototype and engineering comparison with the [C++17 Linux edge proxy](../README.md). Built using the open-source [Pingora](https://github.com/cloudflare/pingora) framework. **Not affiliated with or endorsed by Cloudflare.**
 
-## Features
+## Navigation
 
-- Async HTTP reverse proxy based on **Cloudflare Pingora**
-- Round-robin routing to configurable local HTTP origins
-- Background TCP health checks every second
-- Error response rather than a process panic when all backends are unhealthy
-- Self-contained Python origin fixtures, smoke tests and serial latency sampler
-- CI build and end-to-end traffic-distribution test
+- [Architecture diagram and boundaries](docs/ARCHITECTURE.md)
+- [Engineering case study](docs/CASE_STUDY.md)
+- [Reproducible benchmark protocol](benchmarks/README.md)
+- [Verified throughput/failover measurements](benchmarks/PHASE4_AND_PHASE5.md)
+- [Verified process-resource and repeated outage results](benchmarks/PHASE6.md)
+- [Upstream contribution plan (not submitted)](docs/UPSTREAM_CONTRIBUTION_PLAN.md)
 
-## Run
+## Features already implemented
 
-On Linux, install stable Rust/Cargo, pkg-config and OpenSSL development headers.
+- HTTP proxying through Pingora and round-robin origin routing
+- Background TCP health checks and unavailable-origin handling
+- At most one additional *connection* attempt for eligible GET/HEAD requests, with a distinct-backend retry selection
+- Loopback-only Prometheus-style metrics at `127.0.0.1:9188/metrics` (request/error/retry counters and rough duration buckets)
+- Synthetic origin fixtures and automated origin-failure/restoration checks
+- Three-run paired throughput benchmark, failure-injection results, and Linux process CPU/RSS sampling
+- CI verification using Rust/Python unit tests, C++ builds and integration tests
 
-From this `pingora-rust` directory, open four terminals:
+## Run locally (Linux)
+
+Requirements: stable Rust/Cargo, `pkg-config`, OpenSSL development headers and Python 3.
+
+In three terminals from this directory:
 
 ```bash
 python3 scripts/origin.py --port 9001 --name origin-a
 python3 scripts/origin.py --port 9002 --name origin-b
-cargo run
+cargo run --release
+```
+
+Then in a fourth:
+
+```bash
 python3 scripts/smoke_test.py --requests 30
+curl -s http://127.0.0.1:9188/metrics
+python3 -m unittest discover -s tests -v
 ```
 
-Run Python unit tests: `python3 -m unittest discover -s tests -v`.
-For a basic latency sample run `python3 scripts/benchmark.py --requests 200`.
-
-Configuration:
-```bash
-EDGEGUARD_LISTEN=127.0.0.1:6188 EDGEGUARD_BACKENDS=127.0.0.1:9001,127.0.0.1:9002 cargo run
-```
-
-## Failover exercise
-
-Stop origin A, wait at least 3 seconds for background health checks, then:
+Optional configuration:
 
 ```bash
-python3 scripts/failover_test.py --expected-origin origin-b
+EDGEGUARD_LISTEN=127.0.0.1:6188 \
+EDGEGUARD_METRICS_LISTEN=127.0.0.1:9188 \
+EDGEGUARD_BACKENDS=127.0.0.1:9001,127.0.0.1:9002 \
+cargo run --release
 ```
 
-Restart origin A, wait for health restoration and repeat the two-origin smoke test.
-The transition window can still produce failures; **zero-error failover is not claimed**.
+Test a normal health-check transition by stopping origin A, waiting several seconds, and running `python3 scripts/failover_test.py --expected-origin origin-b`. Restart origin A and allow health checks to recover.
 
-## Scope and honest limitations
+## Run comparative experiments
 
-This is a portfolio experiment, not a hardened CDN. It does **not** yet provide per-request retry budgets, caching, rate limiting, TLS termination, Prometheus metrics, or statistically comparable load-test results. The underlying C++ proxy has more functionality. The Python unit tests pass locally; Rust build and smoke results should be determined from GitHub Actions.
+From the repository root, build the C++ proxy using `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j`. From this directory run:
 
-## Next steps
+```bash
+cargo build --release
+python3 scripts/compare_proxies.py --duration 8 --connections 32 --threads 2 --repeat 3
+python3 scripts/failure_injection.py --duration 11 --concurrency 4 --repeat 3
+```
 
-1. Add bounded retry-on-connect for safe idempotent methods.
-2. Add per-origin request counters and latency histogram.
-3. Implement load test matching C++ workload, response size, concurrency and compiler settings.
-4. Add a documented performance comparison and technical tradeoffs.
+For the repeatability and limitations of these commands, see [the benchmark protocol](benchmarks/README.md). The CI workflow automates build, test, throughput and origin-failure checks.
+
+## Verified observations — shared CI, not a ranking
+
+| Measure | C++17 | Rust/Pingora |
+|---|---:|---:|
+| Median throughput, three runs | 5,103.91 req/s | 5,076.47 req/s |
+| Outage-phase errors, three low-concurrency trials | 0 | 1 |
+| Median first observed return to restored origin | 1.7076 s | 0.7250 s |
+| Median peak process RSS | 4.03 MiB | 15.76 MiB |
+
+The high tail latency, synthetic origins and shared runner preclude claims about production performance or language superiority. Link to the original CI artifacts and method when quoting these results.
+
+## Limitations
+
+This Rust prototype does **not** implement caching, token-bucket rate limiting, production-grade TLS, full HTTP hardening or feature parity with the C++ proxy. Prometheus-style metrics are approximate, process samples exclude child origins, and origin failover can still produce request errors. Neither implementation should be used as a publicly exposed production service without extensive security review.
 
 ## References
 
-- [Pingora repository](https://github.com/cloudflare/pingora)
-- [Official Pingora quick start](https://github.com/cloudflare/pingora/blob/main/docs/quick_start.md)
-
-## Retry and observability experiment (v0.3)
-
-- **Connection retries:** For `GET` and `HEAD` only, upstream connection failures may be retried once; the request context tracks up to two backend selections and skips the failed address on a retry. `POST` and other methods are not explicitly retried.
-- **Metrics:** Loopback-only `http://127.0.0.1:9188/metrics` exposes Prometheus-style request counts, terminal proxy errors, eligible connection retries and approximate request latency buckets (5/25/100/500 ms).
-- **Failover exercise:** `python3 scripts/ci_failover.py` starts two synthetic origins, verifies distribution, stops one, checks convergence and restores it. Requires the proxy already running.
-- **Scope:** Passive failure detection, full request retries, HTTP-status-based retries, auth, TLS, public access and production hardening are not included. An origin can fail during the health-check convergence window.
-- **Benchmarks:** `scripts/benchmark.py` measures *serial* request latency only. Do not compare its output to concurrent C++ proxy throughput figures. Same-hardware concurrent load testing remains future work.
-
+- [Pingora quick start](https://github.com/cloudflare/pingora/blob/main/docs/quick_start.md)
+- [Pingora contribution guidelines](https://github.com/cloudflare/pingora/blob/main/.github/CONTRIBUTING.md)
